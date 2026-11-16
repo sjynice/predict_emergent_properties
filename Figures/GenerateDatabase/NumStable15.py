@@ -64,7 +64,6 @@ for i in range(datasize):
 
 #Xnum[:, NumSpecies:(NumSpecies+featgam)] = 0.5 + 1.5*np.random.rand(datasize, featgam) # |gamma| ranges from 0.5 to 2.0 (competition indext)
 Xnum[:, (NumSpecies+featgam):(NumSpecies+featgam+NumSpecies)] = 1e-06/NumSpecies*np.random.rand(datasize, NumSpecies)
-delta = 0.2*np.ones(NumSpecies)
 
 # Conduct experiments under various parameters, with each experiment initialized repeat times.
 Xynum = gr.predict_numerical(Xnum, NumSpecies, repeat, timespan)
