@@ -105,7 +105,7 @@ def process_narray(
     X_all = narray[:, :NumSpecies + featgam + NumSpecies]
 
     # ---------- y ----------
-    if task_num == 3 + 2 * NumSpecies: # Oscillation
+    if task_num == 3 + 2 * NumSpecies: # Fluctuation
         y = (narray[:, NumSpecies + featgam + NumSpecies + task_num] != 0).astype(int)
     elif task_num == 0: # Steady-state count
         y = narray[:, NumSpecies + featgam + NumSpecies + task_num].astype(int) - 1
@@ -187,99 +187,6 @@ def prepare_test(
     Xd = scaler_d.transform(Xd)
 
     return Xg, XA, Xd, y, idx
-
-
-# Used when output is abundance vector or switching species vector
-def process_narray2(
-    narray,
-    NumSpecies,
-    featgam,
-    task_num
-):
-    """
-    Split narray -> Xg, XA, Xd, y (no scaling)
-    """
-
-    # ---------- X ----------
-    X_all = narray[:, :NumSpecies + featgam + NumSpecies]
-
-    # ---------- y ----------
-    y = narray[:, NumSpecies + featgam + NumSpecies + task_num: NumSpecies + featgam + NumSpecies + task_num + NumSpecies]
-
-    # ---------- split input ----------
-    Xg = X_all[:, :NumSpecies]
-    XA_flat = X_all[:, NumSpecies:NumSpecies + featgam]
-    Xd = X_all[:, NumSpecies + featgam:NumSpecies + featgam + NumSpecies]
-
-    XA = flat_to_matrix_with_zero_diag(XA_flat, NumSpecies)
-
-    return Xg, XA, Xd, y
-
-def prepare_train2(
-    narray_tr,
-    NumSpecies,
-    featgam,
-    task_num,
-    sample_size=None,
-    random_state=None
-):
-    if random_state is not None:
-        np.random.seed(random_state)
-
-    # ---------- sampling ----------
-    if sample_size is not None:
-        idx = np.random.choice(narray_tr.shape[0], size=sample_size, replace=False)
-    else:
-        idx = np.random.choice(narray_tr.shape[0], size=narray_tr.shape[0], replace=False)
-
-    narray_tr = narray_tr[idx]
-
-    # ---------- split ----------
-    Xg, XA, Xd, y = process_narray2(
-        narray_tr, NumSpecies, featgam, task_num
-    )
-
-    # ---------- scale ----------
-    scaler_g = StandardScaler()
-    scaler_d = StandardScaler()
-
-    Xg = scaler_g.fit_transform(Xg)
-    Xd = scaler_d.fit_transform(Xd)
-
-    return Xg, XA, Xd, y, scaler_g, scaler_d, idx
-
-def prepare_test2(
-    narray_te,
-    NumSpecies,
-    featgam,
-    scaler_g,
-    scaler_d,
-    task_num,
-    sample_size=None,
-    random_state=None
-):
-    if random_state is not None:
-        np.random.seed(random_state)
-
-    # ---------- sampling ----------
-    if sample_size is not None:
-        idx = np.random.choice(narray_te.shape[0], size=sample_size, replace=False)
-    else:
-        idx = np.random.choice(narray_te.shape[0], narray_te.shape[0], replace=False)
-
-    narray_te = narray_te[idx]
-
-    # ---------- split ----------
-    Xg, XA, Xd, y = process_narray2(
-        narray_te, NumSpecies, featgam, task_num
-    )
-
-    # ---------- scale ----------
-    Xg = scaler_g.transform(Xg)
-    Xd = scaler_d.transform(Xd)
-
-    return Xg, XA, Xd, y, idx
-
 
 # Version with real species mask, standardizing only real species, and changed train-val split + scaling order
 def process_narray_mask(

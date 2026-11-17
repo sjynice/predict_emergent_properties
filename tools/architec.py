@@ -88,6 +88,238 @@ class TransformerEncoderBlock(nn.Module):
         x = self.norm2(x + ff_out)
         return x
 
+# CNN1D architecture
+class MDCNN1D(nn.Module):
+
+    def __init__(self, NumSpecies):
+        super().__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv1d(
+                in_channels=NumSpecies + 2,
+                out_channels=64,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+
+            nn.Conv1d(
+                in_channels=64,
+                out_channels=128,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+
+            nn.Conv1d(
+                in_channels=128,
+                out_channels=128,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU()
+        )
+
+        self.pool = nn.AdaptiveAvgPool1d(1)
+
+        self.fc = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, 1)
+        )
+
+    def forward(self, Xg, XA, Xd):
+
+        g = Xg.unsqueeze(-1)
+        d = Xd.unsqueeze(-1)
+
+        tokens = torch.cat([g, d, XA], dim=-1)
+
+        x = tokens.transpose(1, 2)
+
+        x = self.conv(x)
+        x = self.pool(x)
+        x = x.squeeze(-1)
+
+        return self.fc(x)
+
+class NSCNN1D(nn.Module):
+
+    def __init__(self, NumSpecies, n_class):
+        super().__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv1d(
+                in_channels=NumSpecies + 2,
+                out_channels=64,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+
+            nn.Conv1d(
+                in_channels=64,
+                out_channels=128,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+
+            nn.Conv1d(
+                in_channels=128,
+                out_channels=128,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU()
+        )
+
+        self.pool = nn.AdaptiveAvgPool1d(1)
+
+        self.fc = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, n_class)
+        )
+
+    def forward(self, Xg, XA, Xd):
+
+        g = Xg.unsqueeze(-1)
+        d = Xd.unsqueeze(-1)
+
+        tokens = torch.cat([g, d, XA], dim=-1)
+
+        x = tokens.transpose(1, 2)
+
+        x = self.conv(x)
+        x = self.pool(x)
+        x = x.squeeze(-1)
+
+        return self.fc(x)
+
+class SSCNN1D(nn.Module):
+
+    def __init__(self, NumSpecies):
+        super().__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv1d(
+                in_channels=NumSpecies + 2,
+                out_channels=64,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+
+            nn.Conv1d(
+                in_channels=64,
+                out_channels=128,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+
+            nn.Conv1d(
+                in_channels=128,
+                out_channels=128,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.BatchNorm1d(128),
+            nn.ReLU()
+        )
+
+        self.fc = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(0.1)
+        )
+
+        self.out = nn.Linear(64, 1)
+
+    def forward(self, Xg, XA, Xd):
+
+        g = Xg.unsqueeze(-1)
+        d = Xd.unsqueeze(-1)
+
+        tokens = torch.cat([g, d, XA], dim=-1)
+
+        x = tokens.transpose(1, 2)
+
+        x = self.conv(x)
+
+        x = x.transpose(1, 2)
+
+        x = self.fc(x)
+
+        x = self.out(x).squeeze(-1)
+
+        return x
+
+class MLP(nn.Module):
+
+    def __init__(
+        self,
+        NumSpecies,
+        featgam,
+        output_dim,
+        hidden_dims=(512, 256, 128),
+        dropout=0.1
+    ):
+        super().__init__()
+
+        self.NumSpecies = NumSpecies
+
+        # Extract off-diagonal interaction terms
+        offdiag_mask = ~torch.eye(
+            NumSpecies,
+            dtype=torch.bool
+        )
+        self.register_buffer("offdiag_mask", offdiag_mask)
+
+        input_dim = 2 * NumSpecies + featgam
+
+        layers = []
+        prev_dim = input_dim
+
+        for hidden_dim in hidden_dims:
+
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            ])
+
+            prev_dim = hidden_dim
+
+        self.backbone = nn.Sequential(*layers)
+
+        self.output = nn.Linear(prev_dim, output_dim)
+
+    def forward(self, Xg, XA, Xd):
+
+        # Extract non-diagonal interaction terms
+        XA_flat = XA[:, self.offdiag_mask]
+
+        # Concatenate all input features
+        x = torch.cat(
+            [Xg, XA_flat, Xd],
+            dim=1
+        )
+
+        x = self.backbone(x)
+
+        return self.output(x)
 
 # Architecture MD is used for Entropy, Diversity, Fluctuation
 class MDTrans2(nn.Module):

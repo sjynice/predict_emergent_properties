@@ -158,14 +158,15 @@ def pad_Xnum_and_ynum(df, NumSpecies, MaxNum, sur_frac=False):
 
     Xynum2 = np.hstack((Xnum2, ynum2))
     df_new = pd.concat([pd.DataFrame(Xynum2), df.iloc[:, len_Xnum+len_ynum:]], axis=1)
-    df_new.columns = (
-        list(range(len_Xnum2))
-        + ["states_number", "relative_H", "relative_D"]
-        + [f"abun_sp{i+1}" for i in range(MaxNum)] 
-        + [f"switching_sp{i+1}" for i in range(MaxNum)] 
-        + ["fluctuation", "outlier", "survival_fraction"] 
-        + list(df_new.columns[Xynum2.shape[1]:])
-    )
+    if sur_frac==True:
+        df_new.columns = (
+            list(range(len_Xnum2))
+            + ["states_number", "relative_H", "relative_D"]
+            + [f"abun_sp{i+1}" for i in range(MaxNum)] 
+            + [f"switching_sp{i+1}" for i in range(MaxNum)] 
+            + ["fluctuation", "outlier", "survival_fraction"] 
+            + list(df_new.columns[Xynum2.shape[1]:])
+        )
     return df_new
 
 def pad_Xnum_and_ynum_nolegendversion(Xynum, NumSpecies, MaxNum):
@@ -288,6 +289,36 @@ def load_saved_model_SS(load_dir, device):
         "scaler_d": scaler_d,
         "model": model,
         **config  # Also adds NumSpecies, featgam, etc. to the dictionary
+    }
+
+def load_saved_model_SS_CNN1D(load_dir, device):
+
+    # Load scalers
+    scaler_g = joblib.load(load_dir / "scaler_g.pkl")
+    scaler_d = joblib.load(load_dir / "scaler_d.pkl")
+
+    # Load config
+    with open(load_dir / "config.json") as f:
+        config = json.load(f)
+
+    # Initialize CNN1D model
+    model = acht.SSCNN1D(config["NumSpecies"]).to(device)
+
+    # Load model weights
+    model.load_state_dict(
+        torch.load(
+            load_dir / "model.pt",
+            map_location=device
+        )
+    )
+
+    model.eval()
+
+    return {
+        "scaler_g": scaler_g,
+        "scaler_d": scaler_d,
+        "model": model,
+        **config
     }
 
 '''
@@ -428,6 +459,32 @@ class Predictor:
         #print("expected_N:", expected_N.shape)
 
         return expected_N
+    
+    def predict_tensor_NS_prob(self, X, state_number=None):
+
+        if X.dim() == 1:
+            X = X.unsqueeze(0)
+
+        Xg, XA, Xd = prep.process_tensor_X(
+            X,
+            self.ckpt["NumSpecies"],
+            self.ckpt["featgam"],
+            self.ckpt["scaler_g"],
+            self.ckpt["scaler_d"]
+        )
+
+        self.ckpt["model"].eval()
+        logits = self.ckpt["model"](Xg, XA, Xd)
+
+        y_prob = torch.softmax(logits, dim=1)
+
+        if state_number is None:
+            return y_prob
+
+        if not 1 <= state_number <= y_prob.shape[1]:
+            raise ValueError("state_number is out of range")
+
+        return y_prob[:, state_number - 1]
     
     def predict_array_MD(self, Xnum_pad, device):
 
